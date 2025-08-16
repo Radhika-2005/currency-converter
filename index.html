@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Currency Converter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .card {
+      background-color: #fff;
+      border: none;
+    }
+    
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    
+    .spinner-border-sm {
+      width: 1rem;
+      height: 1rem;
+    }
+  </style>
+</head>
+<body class="d-flex align-items-center justify-content-center vh-100" style="background: linear-gradient(135deg, #8360c3, #2ebf91);">
+  
+  <div class="card p-4 shadow-lg" style="width: 400px; border-radius: 20px;">
+    <h3 class="text-center mb-4 fw-bold">⇆ Currency Converter</h3>
+    
+    <div class="mb-3">
+      <label for="fromCurrency" class="form-label">Source Currency</label>
+      <select id="fromCurrency" class="form-select"></select>
+    </div>
+    
+    <div class="mb-3">
+      <label for="toCurrency" class="form-label">Target Currency</label>
+      <select id="toCurrency" class="form-select"></select>
+    </div>
+    
+    <div class="mb-3">
+      <label for="amount" class="form-label">Amount</label>
+      <input type="number" id="amount" class="form-control" placeholder="Enter amount">
+    </div>
+    
+    <div class="d-grid mb-3">
+      <button id="convertBtn" class="btn btn-primary" onclick="convertCurrency()">
+        <span id="btnText">CONVERT</span>
+        <span id="loadingSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;"></span>
+      </button>
+    </div>
+    
+    <div id="result" class="text-center fs-4 fw-semibold"></div>
+    <div id="rateInfo" class="text-center text-muted mt-1 fs-6"></div>
+  </div>
+
+  <script>
+    const fromCurrency = document.getElementById("fromCurrency");
+    const toCurrency = document.getElementById("toCurrency");
+    const amount = document.getElementById("amount");
+    const result = document.getElementById("result");
+    const rateInfo = document.getElementById("rateInfo");
+    const convertBtn = document.getElementById("convertBtn");
+    const btnText = document.getElementById("btnText");
+    const loadingSpinner = document.getElementById("loadingSpinner");
+
+    const currencyList = {
+      "USD": "US Dollar",
+      "EUR": "Euro",
+      "INR": "Indian Rupee",
+      "GBP": "British Pound",
+      "JPY": "Japanese Yen",
+      "AUD": "Australian Dollar",
+      "CAD": "Canadian Dollar",
+      "CNY": "Chinese Yuan",
+      "SAR": "Saudi Riyal",
+      "AED": "Emirati Dirham",
+      "CHF": "Swiss Franc",
+      "KRW": "South Korean Won",
+      "SGD": "Singapore Dollar",
+      "HKD": "Hong Kong Dollar",
+      "NZD": "New Zealand Dollar"
+    };
+
+    // Currency symbols mapping
+    const currencySymbols = {
+      "USD": "$",
+      "EUR": "€",
+      "INR": "₹",
+      "GBP": "£",
+      "JPY": "¥",
+      "AUD": "A$",
+      "CAD": "C$",
+      "CNY": "¥",
+      "SAR": "﷼",
+      "AED": "د.إ",
+      "CHF": "CHF",
+      "KRW": "₩",
+      "SGD": "S$",
+      "HKD": "HK$",
+      "NZD": "NZ$"
+    };
+
+    // Populate dropdowns
+    Object.keys(currencyList).forEach(code => {
+      const option1 = new Option(`${code} - ${currencyList[code]}`, code);
+      const option2 = new Option(`${code} - ${currencyList[code]}`, code);
+      fromCurrency.appendChild(option1);
+      toCurrency.appendChild(option2);
+    });
+
+    // Set default values
+    fromCurrency.value = "USD";
+    toCurrency.value = "EUR";
+
+    // Multiple API endpoints for fallback
+    const apiEndpoints = [
+      {
+        name: "ExchangeRate-API",
+        url: (from, to) => `https://api.exchangerate-api.com/v4/latest/${from}`,
+        parseRate: (data, to) => data.rates[to]
+      },
+      {
+        name: "Fixer.io",
+        url: (from, to) => `https://api.fixer.io/latest?base=${from}&symbols=${to}`,
+        parseRate: (data, to) => data.rates[to]
+      },
+      {
+        name: "CurrencyAPI",
+        url: (from, to) => `https://api.currencyapi.com/v3/latest?apikey=cur_live_YOUR_API_KEY&base_currency=${from}&currencies=${to}`,
+        parseRate: (data, to) => data.data[to]?.value
+      }
+    ];
+
+    function showLoading(show) {
+      if (show) {
+        btnText.textContent = "Converting...";
+        loadingSpinner.style.display = "inline-block";
+        convertBtn.disabled = true;
+        convertBtn.classList.add("loading");
+      } else {
+        btnText.textContent = "CONVERT";
+        loadingSpinner.style.display = "none";
+        convertBtn.disabled = false;
+        convertBtn.classList.remove("loading");
+      }
+    }
+
+    function getSymbol(currencyCode) {
+      return currencySymbols[currencyCode] || currencyCode;
+    }
+
+    // Fallback exchange rates (approximate - for demo purposes)
+    const fallbackRates = {
+      "USD_EUR": 0.85,
+      "USD_INR": 83.12,
+      "USD_GBP": 0.79,
+      "USD_JPY": 149.50,
+      "USD_AUD": 1.52,
+      "USD_CAD": 1.36,
+      "USD_CNY": 7.24,
+      "USD_SAR": 3.75,
+      "USD_AED": 3.67,
+      "USD_CHF": 0.88,
+      "USD_KRW": 1320.45,
+      "USD_SGD": 1.34,
+      "USD_HKD": 7.83,
+      "USD_NZD": 1.64,
+      "EUR_USD": 1.18,
+      "EUR_INR": 89.50,
+      "EUR_GBP": 0.87,
+      "GBP_USD": 1.27,
+      "GBP_EUR": 1.15,
+      "GBP_INR": 104.25,
+      "INR_USD": 0.012,
+      "INR_EUR": 0.011,
+      "INR_GBP": 0.0096
+    };
+
+    function getFallbackRate(from, to) {
+      const key = `${from}_${to}`;
+      const reverseKey = `${to}_${from}`;
+      
+      if (fallbackRates[key]) {
+        return fallbackRates[key];
+      } else if (fallbackRates[reverseKey]) {
+        return 1 / fallbackRates[reverseKey];
+      }
+      
+      // Convert through USD if direct rate not available
+      if (from !== "USD" && to !== "USD") {
+        const fromToUSD = fallbackRates[`${from}_USD`] || (1 / fallbackRates[`USD_${from}`]);
+        const USDToTo = fallbackRates[`USD_${to}`] || (1 / fallbackRates[`${to}_USD`]);
+        
+        if (fromToUSD && USDToTo) {
+          return fromToUSD * USDToTo;
+        }
+      }
+      
+      return null;
+    }
+
+    async function tryAPI(apiConfig, from, to) {
+      try {
+        const response = await fetch(apiConfig.url(from, to));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        const rate = apiConfig.parseRate(data, to);
+        
+        if (rate && !isNaN(rate)) {
+          return rate;
+        }
+        throw new Error("Invalid rate received");
+      } catch (error) {
+        console.log(`${apiConfig.name} failed:`, error);
+        return null;
+      }
+    }
+
+    async function convertCurrency() {
+      const from = fromCurrency.value;
+      const to = toCurrency.value;
+      const amt = parseFloat(amount.value);
+
+      if (isNaN(amt) || amt <= 0) {
+        result.innerHTML = '<span class="text-warning">⚠️ Enter a valid amount</span>';
+        rateInfo.innerText = "";
+        return;
+      }
+
+      if (from === to) {
+        result.innerHTML = `${getSymbol(to)}${amt.toFixed(2)} ${to}`;
+        rateInfo.innerText = `1 ${from} = 1 ${to}`;
+        return;
+      }
+
+      showLoading(true);
+      result.innerHTML = '<span class="text-info">Converting...</span>';
+      rateInfo.innerText = "";
+
+      let rate = null;
+      let apiUsed = "Unknown";
+
+      // Try different APIs
+      for (const api of apiEndpoints) {
+        rate = await tryAPI(api, from, to);
+        if (rate) {
+          apiUsed = api.name;
+          break;
+        }
+      }
+
+      // If all APIs fail, use fallback rates
+      if (!rate) {
+        rate = getFallbackRate(from, to);
+        apiUsed = "Offline rates";
+      }
+
+      showLoading(false);
+
+      if (rate) {
+        const converted = amt * rate;
+        const symbol = getSymbol(to);
+        
+        result.innerHTML = `<span class="text-success">${symbol}${converted.toFixed(2)} ${to}</span>`;
+        rateInfo.innerHTML = `
+          <div>1 ${from} = ${rate.toFixed(6)} ${to}</div>
+          <small class="text-muted">Source: ${apiUsed}</small>
+        `;
+      } else {
+        result.innerHTML = '<span class="text-danger">⚠️ Unable to get exchange rate</span>';
+        rateInfo.innerHTML = '<small class="text-muted">Please try again later</small>';
+      }
+    }
+
+    // Auto-convert when amount changes (with debounce)
+    let timeout;
+    amount.addEventListener('input', () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        if (amount.value && parseFloat(amount.value) > 0) {
+          convertCurrency();
+        }
+      }, 1000);
+    });
+
+    // Auto-convert when currencies change
+    fromCurrency.addEventListener('change', () => {
+      if (amount.value && parseFloat(amount.value) > 0) {
+        convertCurrency();
+      }
+    });
+
+    toCurrency.addEventListener('change', () => {
+      if (amount.value && parseFloat(amount.value) > 0) {
+        convertCurrency();
+      }
+    });
+
+    // Initial conversion on page load - removed auto-conversion
+  </script>
+</body>
+</html>
